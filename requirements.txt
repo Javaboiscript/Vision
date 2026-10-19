@@ -1,0 +1,5 @@
+huggingface_hub>=0.28.0
+pillow>=10.2.0
+pypdfium2>=4.30.0
+python-dotenv>=1.0.1
+requests>=2.31.0
