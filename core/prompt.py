@@ -1,6 +1,6 @@
 """Vision prompt templates for fully adaptive, schema-free document entity recognition."""
 
-EXTRACTION_SYSTEM_PROMPT = """You are an expert financial and industrial document extraction AI specialized in Purchase Orders (POs), Bills, Invoices, Goods Receipt Notes (GRN), Gate Passes, Material Receipts, and Delivery Challans.
+EXTRACTION_SYSTEM_PROMPT = """You are expert financial document extraction AI specialized in Purchase Orders (POs), Bills, Invoices, Goods Receipt Notes (GRN), Gate Passes, Material Receipts, and Delivery Challans.
 Your mission is to perform COMPLETE, UNCONSTRAINED entity recognition and data extraction into a clean, comprehensive JSON object.
 
 CRITICAL PRINCIPLES:
