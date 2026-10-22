@@ -3,6 +3,10 @@
 venv/
 ENV/
 env/
+input/
+output_with_ItemNo/
+output/
+output_enriched/
 
 # Environment variables & secrets
 .env
