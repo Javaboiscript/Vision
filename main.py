@@ -17,6 +17,7 @@ if sys.stderr and hasattr(sys.stderr, "reconfigure"):
     except Exception:
         pass
 
+import config
 from config import DEFAULT_MODEL, DEFAULT_OUTPUT_DIR
 from core.document_loader import ALL_SUPPORTED_EXTENSIONS, is_supported_file
 from core.extractor import VisionExtractor
@@ -31,12 +32,52 @@ logger = logging.getLogger("Vision_Spectrum")
 
 
 def process_single_file(extractor: VisionExtractor, file_path: Path, output_dir: Path) -> bool:
-    """Process a single document file and dump JSON output."""
+    """Process a single document file, optionally enrich with SQL Server DB, and dump JSON output."""
     try:
         result = extractor.extract_from_file(file_path=file_path, output_dir=output_dir)
 
-        # Print quick summary
+        # 2. Database Enrichment: Fetch ItemNo from masterdata.mItemMaster if DB configured
+        if config.SQL_SERVER_CONNECTION_STRING and config.ENABLE_DB_ENRICHMENT:
+            try:
+                from core.db_connector import enrich_json_with_items
+                from core.json_cleaner import dump_json_to_file
+
+                logger.info("Enriching line items with ItemNo from masterdata.mItemMaster...")
+                result = enrich_json_with_items(result, config.SQL_SERVER_CONNECTION_STRING)
+
+                # Re-save enriched JSON to file
+                output_file = output_dir / f"{file_path.stem}_extracted.json"
+                dump_json_to_file(result, str(output_file))
+                logger.info(f"Saved database-enriched JSON to: {output_file}")
+            except Exception as db_err:
+                logger.warning(f"Database enrichment skipped due to error: {db_err}")
+
+        # 3. Form Generation: Generate PurchaseBillMain Form in output_purchasebillmainform
+        pb_form_summary_line = ""
         doc_meta = result.get("document_metadata", {})
+        doc_type_lower = str(doc_meta.get("document_type", "")).lower()
+        is_purchase_bill = (
+            "bill" in doc_type_lower
+            or "invoice" in doc_type_lower
+            or "pb" in file_path.stem.lower()
+            or "purchase" in doc_type_lower
+        )
+
+        if is_purchase_bill and config.SQL_SERVER_CONNECTION_STRING:
+            try:
+                from core.db_connector import generate_purchase_bill_form
+
+                pb_out_file = config.PURCHASE_BILL_FORM_DIR / f"{file_path.stem}_purchasebillmain.json"
+                generate_purchase_bill_form(
+                    extracted_json=result,
+                    connection_string=config.SQL_SERVER_CONNECTION_STRING,
+                    output_file=pb_out_file
+                )
+                pb_form_summary_line = f"  • PB Form Output   : {pb_out_file}\n"
+            except Exception as pb_err:
+                logger.warning(f"PurchaseBillMain form generation failed: {pb_err}")
+
+        # Print quick summary
         fin_sum = result.get("financial_summary", {})
         line_items = result.get("line_items", [])
 
@@ -51,6 +92,21 @@ def process_single_file(extractor: VisionExtractor, file_path: Path, output_dir:
         total = fin_sum.get("grand_total") or fin_sum.get("total_amount") or "N/A"
         currency = doc_meta.get("currency", "")
 
+        db_summary_line = ""
+        if "_enrichment" in result:
+            enrich = result["_enrichment"]
+            matched_cnt = enrich.get("matched_items_count", 0)
+            total_cnt = enrich.get("total_items_count", 0)
+            db_summary_line = f"  • DB Matched Items : {matched_cnt}/{total_cnt} ItemNo(s) linked\n"
+            if enrich.get("matched_company"):
+                db_summary_line += f"  • DB Company       : {enrich['matched_company']}\n"
+            if enrich.get("matched_vendor"):
+                db_summary_line += f"  • DB Vendor        : {enrich['matched_vendor']}\n"
+            if enrich.get("matched_pono"):
+                db_summary_line += f"  • DB POMain PONo   : {enrich['matched_pono']}\n"
+            if enrich.get("matched_grn_no"):
+                db_summary_line += f"  • DB GRNMain GRNNo : {enrich['matched_grn_no']}\n"
+
         summary_text = (
             "\n" + "=" * 60 + "\n"
             f" EXTRACTED: {file_path.name}\n"
@@ -61,7 +117,9 @@ def process_single_file(extractor: VisionExtractor, file_path: Path, output_dir:
             f"  • Document Number  : {doc_num}\n"
             f"  • Total Amount     : {currency} {total}\n"
             f"  • Line Items Count : {len(line_items) if isinstance(line_items, list) else 'N/A'}\n"
+            f"{db_summary_line}"
             f"  • JSON Output      : {output_dir / f'{file_path.stem}_extracted.json'}\n"
+            f"{pb_form_summary_line}"
             + "=" * 60 + "\n"
         )
         sys.stdout.write(summary_text)
@@ -103,6 +161,12 @@ def main():
         type=str,
         help="OpenRouter API key (overrides OPENROUTER_API_KEY from .env).",
     )
+    parser.add_argument(
+        "--db-conn",
+        default=None,
+        type=str,
+        help="SQL Server connection string (overrides SQL_SERVER_CONNECTION_STRING from .env).",
+    )
 
     args = parser.parse_args()
 
@@ -113,6 +177,10 @@ def main():
     if not input_path.exists():
         logger.error(f"Input path does not exist: {input_path}")
         sys.exit(1)
+
+    # Override SQL Server connection string if passed via CLI
+    if args.db_conn:
+        config.SQL_SERVER_CONNECTION_STRING = args.db_conn
 
     # Initialize Vision Extractor
     extractor = VisionExtractor(

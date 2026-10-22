@@ -27,9 +27,66 @@ FALLBACK_MODELS = [
 ]
 
 # Output directory for extracted JSON dumps
-DEFAULT_OUTPUT_DIR = BASE_DIR / "output"
+DEFAULT_OUTPUT_DIR = BASE_DIR / "output_enriched"
 DEFAULT_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+# Output directory for PurchaseBillMain form outputs
+PURCHASE_BILL_FORM_DIR = BASE_DIR / "output_purchasebillmainform"
+PURCHASE_BILL_FORM_DIR.mkdir(parents=True, exist_ok=True)
 
 # Image processing limits (preserves legibility while optimizing payload size)
 MAX_IMAGE_DIMENSION = 2048
 IMAGE_JPEG_QUALITY = 90
+
+# SQL Server (SSMS) Database Configuration for ItemMaster enrichment
+def parse_db_connection_string() -> str:
+    raw_val = (
+        os.getenv("SQL_SERVER_DATABASE_URL")
+        or os.getenv("SQL_SERVER_CONNECTION_STRING")
+        or os.getenv("SQL_SERVER_DATABSE")
+        or os.getenv("SQL_SERVER_DATABASE")
+        or ""
+    ).strip()
+
+    if not raw_val:
+        return ""
+
+    # If already standard ODBC connection string
+    if "driver=" in raw_val.lower() and "://" not in raw_val:
+        return raw_val
+
+    # If SQLAlchemy format: mssql+pyodbc://user:pass@host/db?driver=...
+    if "://" in raw_val:
+        import urllib.parse
+        parsed = urllib.parse.urlparse(raw_val)
+        query_params = urllib.parse.parse_qs(parsed.query)
+
+        driver = query_params.get("driver", ["ODBC Driver 18 for SQL Server"])[0]
+        if not driver.startswith("{") and not driver.endswith("}"):
+            driver = f"{{{driver}}}"
+
+        server = parsed.hostname or "localhost"
+        if parsed.port:
+            server = f"{server},{parsed.port}"
+
+        database = parsed.path.lstrip("/")
+        parts = [
+            f"Driver={driver}",
+            f"Server={server}",
+            f"Database={database}",
+        ]
+        if parsed.username:
+            parts.append(f"UID={parsed.username}")
+        if parsed.password:
+            parts.append(f"PWD={parsed.password}")
+
+        for k, vals in query_params.items():
+            if k.lower() != "driver":
+                parts.append(f"{k}={vals[0]}")
+
+        return ";".join(parts) + ";"
+
+    return raw_val
+
+SQL_SERVER_CONNECTION_STRING = parse_db_connection_string()
+ENABLE_DB_ENRICHMENT = os.getenv("ENABLE_DB_ENRICHMENT", "true").lower() in ("true", "1", "yes")
