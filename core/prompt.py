@@ -7,14 +7,18 @@ CRITICAL PRINCIPLES:
 1. DOCUMENT NUMBER YEARLY (DocumentNoYearly) - TOP PRIORITY:
    - Identify the PRIMARY annual series document identifier printed on the document:
      * For a Purchase Order: this is the PO Number (e.g., 'PO# 8873632', 'WAI-9823764', 'PO00000100', 'PO-SteelBearLtd.-00135').
-     * For a Bill or Purchase Invoice: this is the Bill / Invoice Number (e.g., 'Process\\26-27\\00009', 'BIL-00160').
+     * For a Bill or Purchase Invoice: this is the Bill / Invoice Number (e.g., 'Process\\26-27\\00009', 'BIL-00160', 'PWC2627/OCT/0661').
      * For a GRN / Material Receipt: this is the GRN / MRN Number (e.g., 'GRN/Process/0001/14.10.26').
      * For a Gate Entry / Gate Pass: this is the Gate Entry / Inward Number (e.g., 'RM/IMAGE/26-27/38', '0104010001').
    - ALWAYS populate `document_no_yearly` with this exact primary document string!
 
-2. PURCHASE ORDER (PO) NUMBER DETECTION:
-   - Also search for any Purchase Order identifier (e.g., "PO Number", "P.O. #", "PO No.", "Order Ref", "Process/...", "Customer PO").
-   - Populate `po_number` with this value whenever present (in POs, Invoices, Bills, GRNs, or Delivery Challans).
+2. REFERENCE DOCUMENT DETECTION (PO, GRN, CHALLAN, INVOICE):
+   - Purchase Order identifier: Search for "Buyer's Order No.", "Buyer Order No.", "PO Number", "P.O. #", "PO No.", "PO / WO No.", "Order Ref", "Process/...".
+     NOTE: On vendor tax invoices, "Buyer's Order No." is the Purchase Order Number! Always populate `po_number` with this value.
+   - Invoice / Bill Number: Search for "Invoice No.", "Invoice No", "Bill No.", "Tax Invoice No.". Always populate `invoice_or_bill_number`.
+   - Goods Receipt Note (GRN): Search for "GRN No.", "GRN Date", "MRN No.", "Receipt No.".
+   - Delivery Challan: Search for "Challan No.", "Challan Date", "Challan Qty", "DC No.", "Delivery Note", "Dispatch Doc No.".
+   - Populate `po_number` and reference details whenever present.
 
 3. NO INFORMATION LOSS & DYNAMIC EXTENSION:
    - Extract 100% of all legible information, labels, values, tables, codes, headers, and stamps visible on the document.
@@ -35,14 +39,14 @@ CRITICAL PRINCIPLES:
 EXTRACTION_USER_PROMPT = """Carefully examine the provided document image(s) (Purchase Order / Bill / Invoice / GRN / Material Receipt / Challan).
 
 IMPORTANT: The JSON structure below is ONLY A BASELINE RECOMMENDATION to guide you.
-Do NOT limit your output to only these keys. If you see ANY additional information, extra columns, specialized document sections (e.g., Challan details, GRN specifics, Store/Department, Transporter info, Quality/Inspection data, Signatures, or custom notes), EXTRACT AND INCLUDE THEM TOO!
+Do NOT limit your output to only these keys. If you see ANY additional information, extra columns, specialized document sections (e.g., Buyer's Order No, Delivery Note, Challan details, GRN specifics, Store/Department, Transporter info, Quality/Inspection data, Signatures, or custom notes), EXTRACT AND INCLUDE THEM TOO!
 
 Recommended Reference Format:
 {
   "document_metadata": {
     "document_type": "Purchase Order | Purchase Invoice | Bill | Material Receipt / GRN | Gate Pass | Other",
-    "document_no_yearly": "EXACT primary annual document number printed on the document (e.g., 'Process\\26-27\\00009', 'GRN/Process/0001/14.10.26', 'RM/IMAGE/26-27/38', 'BIL-00160', '8873632', 'PO00000100'). MUST NOT BE NULL.",
-    "po_number": "Purchase Order Number if present anywhere on the document (primary or referenced)",
+    "document_no_yearly": "EXACT primary annual document number printed on the document (e.g., 'Process\\26-27\\00009', 'PWC2627/OCT/0661', 'GRN/Process/0001/14.10.26', 'RM/IMAGE/26-27/38', 'BIL-00160', '8873632', 'PO00000100'). MUST NOT BE NULL.",
+    "po_number": "Purchase Order Number or Buyer's Order No. if present anywhere on the document",
     "invoice_or_bill_number": "Invoice / Bill number if applicable",
     "document_number": "Primary document number",
     "issue_date": "Date of document",

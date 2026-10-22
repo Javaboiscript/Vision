@@ -41,7 +41,7 @@ class VisionExtractor:
         file_path: Path,
         output_dir: Optional[Path] = None,
         max_tokens: int = 4096,
-        temperature: float = 0.1,
+        temperature: float = 0.0,
     ) -> Dict[str, Any]:
         """
         Load a document (JPG/JPEG, PNG, or multi-page PDF), send page images to
@@ -91,7 +91,7 @@ class VisionExtractor:
         }
 
         last_error = None
-        raw_text = None
+        parsed_data = None
 
         for model_name in candidate_models:
             logger.info(f"Attempting extraction using model: {model_name}")
@@ -100,6 +100,7 @@ class VisionExtractor:
                 "messages": messages,
                 "max_tokens": max_tokens,
                 "temperature": temperature,
+                "response_format": {"type": "json_object"},
             }
 
             try:
@@ -116,7 +117,15 @@ class VisionExtractor:
                     if choices:
                         raw_text = choices[0].get("message", {}).get("content", "")
                         logger.info(f"Successfully received response from {model_name}")
-                        break
+                        try:
+                            parsed_data = parse_llm_json(raw_text)
+                            break
+                        except Exception as parse_err:
+                            logger.warning(
+                                f"Model '{model_name}' produced unparseable JSON: {parse_err}. Trying fallback..."
+                            )
+                            last_error = parse_err
+                            continue
                     else:
                         raise ValueError(f"No choices returned by {model_name}: {resp_json}")
                 else:
@@ -129,13 +138,10 @@ class VisionExtractor:
                 last_error = e
                 continue
 
-        if raw_text is None:
+        if parsed_data is None:
             raise RuntimeError(
                 f"Failed to extract document '{file_path.name}'. Last error: {last_error}"
             )
-
-        # 4. Clean and parse JSON without schema enforcement
-        parsed_data = parse_llm_json(raw_text)
 
         # Inject source file metadata
         if isinstance(parsed_data, dict):
